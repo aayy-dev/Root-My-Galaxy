@@ -544,11 +544,11 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     private fun File.readTextIfPresent(): String = if (exists()) readText() else ""
 
     companion object {
-        private const val EXPLOIT_ATTEMPTS = "1"
-        private const val P0_ATTEMPT_TIMEOUT_SEC = "1200"
-        private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "2200"
+        private const val EXPLOIT_ATTEMPTS = "24"
+        private const val P0_ATTEMPT_TIMEOUT_SEC = "45"
+        private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "120"
         private const val EXPLOIT_STALL_MILLIS = 90_000L
-        private const val EXPLOIT_TOTAL_MILLIS = 2_400_000L
+        private const val EXPLOIT_TOTAL_MILLIS = 900_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
         private const val INSTALL_RECEIPT = "install_receipt"
         private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
