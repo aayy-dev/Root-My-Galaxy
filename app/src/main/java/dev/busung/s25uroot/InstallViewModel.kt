@@ -202,6 +202,25 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
 
                 setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
                 appendLog(app.getString(R.string.log_install_complete))
+
+                if (DIAG_SOFT_REBOOT == "1") {
+                    appendLog("[*] diag: capturing pre-reboot diagnostics via su...")
+                    runHelper("-c", "dmesg > /data/local/tmp/diag-dmesg-pre-reboot.txt")
+                    runHelper("-c", "cat /proc/meminfo > /data/local/tmp/diag-meminfo.txt")
+                    runHelper("-c", "dmesg | grep -iE 'BUG|bad.page|refcount|corrupt' > /data/local/tmp/diag-anomalies.txt")
+                    runHelper("-c", "ps -A > /data/local/tmp/diag-processes.txt")
+                    appendLog("[+] diag: diagnostics saved to /data/local/tmp/diag-*")
+                    appendLog("[*] diag: triggering soft reboot in 5 seconds...")
+                    delay(5000.toLong())
+                    appendLog("[*] diag: === TRIGGERING SOFT REBOOT NOW ===")
+                    runHelper("-c", "svc power reboot soft_reboot")
+                    delay(10000.toLong())
+                    appendLog("[-] diag: soft reboot via svc failed, trying reboot command...")
+                    runHelper("-c", "reboot soft_reboot")
+                    delay(10000.toLong())
+                    appendLog("[-] diag: all reboot methods failed")
+                }
+
                 finishHistory(InstallRunResult.Succeeded)
             } catch (error: Throwable) {
                 appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
