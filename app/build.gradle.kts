@@ -8,7 +8,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.busung.s25uroot"
+        applicationId = "dev.busung.s25uroot.test"
         minSdk = 33
         targetSdk = 36
         versionCode = 13
