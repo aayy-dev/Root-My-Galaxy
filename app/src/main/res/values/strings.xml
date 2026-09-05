@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">RMG TEST</string>
+    <string name="app_name">Root My Galaxy TEST</string>
     <string name="nav_overview">Home</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
