@@ -245,6 +245,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
                 put("P0_ATTEMPT_TIMEOUT_SEC", P0_ATTEMPT_TIMEOUT_SEC)
                 put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", EXPLOIT_ATTEMPT_TIMEOUT_SEC)
+                put("DIAG_SOFT_REBOOT", DIAG_SOFT_REBOOT)
                 cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
             }
             processBuilder.start()
@@ -442,6 +443,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
         add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
         add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
+        add("DIAG_SOFT_REBOOT=$DIAG_SOFT_REBOOT")
         add("CVE43499_ROOT_HELPER=$helperPath")
         add("LD_PRELOAD=$payloadPath")
         cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
@@ -547,8 +549,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_ATTEMPTS = "3"
         private const val P0_ATTEMPT_TIMEOUT_SEC = "600"
         private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "900"
+        private const val DIAG_SOFT_REBOOT = "1"
         private const val EXPLOIT_STALL_MILLIS = 90_000L
-        private const val EXPLOIT_TOTAL_MILLIS = 900_000L
+        private const val EXPLOIT_TOTAL_MILLIS = 960_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
         private const val INSTALL_RECEIPT = "install_receipt"
         private const val RECEIPT_BOOT_TOKEN = "kernel_boot_id"
