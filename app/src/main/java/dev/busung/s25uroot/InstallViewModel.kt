@@ -203,28 +203,40 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
                 appendLog(app.getString(R.string.log_install_complete))
 
-                if (DIAG_SOFT_REBOOT == "1") {
-                    appendLog("[*] diag: capturing pre-reboot diagnostics via root helper...")
-                    val d1 = runHelper("-c", "dmesg > /data/local/tmp/diag-dmesg-pre-reboot.txt")
-                    val d2 = runHelper("-c", "cat /proc/meminfo > /data/local/tmp/diag-meminfo.txt")
-                    val d3 = runHelper("-c", "ps -A > /data/local/tmp/diag-processes.txt")
-                    appendLog("[*] diag: capture results: dmesg=${d1.code} meminfo=${d2.code} ps=${d3.code}")
-                    if (d1.code != 0) appendLog("[-] diag: dmesg failed: ${d1.output}")
-                    val testResult = runHelper("-c", "id && ls -la /data/local/tmp/diag-* 2>&1")
-                    appendLog("[*] diag: test: ${testResult.output}")
-                    appendLog("[*] diag: triggering soft reboot (zygote restart) in 5 seconds...")
+                if (DIAG_SOFT_REBOOT == "1" && shizukuEnabled()) {
+                    appendLog("[*] diag: capturing diagnostics via su...")
+                    try {
+                        val suTest = ShizukuController.capture(arrayOf("su", "-c", "id"))
+                        appendLog("[*] diag: su test: $suTest")
+                        ShizukuController.exec(arrayOf("su", "-c",
+                            "dmesg > /data/local/tmp/diag-dmesg-pre-reboot.txt"))
+                            .waitFor()
+                        ShizukuController.exec(arrayOf("su", "-c",
+                            "cat /proc/meminfo > /data/local/tmp/diag-meminfo.txt"))
+                            .waitFor()
+                        ShizukuController.exec(arrayOf("su", "-c",
+                            "ps -A > /data/local/tmp/diag-processes.txt"))
+                            .waitFor()
+                        val lsResult = ShizukuController.capture(arrayOf("su", "-c",
+                            "ls -la /data/local/tmp/diag-*"))
+                        appendLog("[+] diag: files: $lsResult")
+                    } catch (e: Throwable) {
+                        appendLog("[-] diag: capture failed: ${e.message}")
+                    }
+                    appendLog("[*] diag: triggering soft reboot in 5 seconds...")
                     appendLog("[*] diag: the app will be killed — this is expected")
                     delay(5000.toLong())
                     appendLog("[*] diag: === TRIGGERING SOFT REBOOT NOW ===")
-                    val rebootResult = runHelper("-c", "setprop ctl.restart zygote")
-                    appendLog("[*] diag: setprop result code=${rebootResult.code} output=${rebootResult.output}")
-                    if (rebootResult.code != 0) {
-                        appendLog("[*] diag: trying kill zygote fallback...")
-                        val killResult = runHelper("-c", "kill -9 $(pidof zygote64) $(pidof zygote)")
-                        appendLog("[*] diag: kill result code=${killResult.code} output=${killResult.output}")
-                    }
-                    delay(15000.toLong())
-                    appendLog("[-] diag: soft reboot did not trigger")
+                    try {
+                        ShizukuController.exec(arrayOf("su", "-c",
+                            "setprop ctl.restart zygote"))
+                        delay(10000.toLong())
+                        appendLog("[-] diag: setprop didn't work, trying kill...")
+                        ShizukuController.exec(arrayOf("su", "-c",
+                            "kill -9 $(pidof zygote64) $(pidof zygote)"))
+                        delay(10000.toLong())
+                        appendLog("[-] diag: soft reboot did not trigger")
+                    } catch (_: Throwable) {}
                 }
 
                 finishHistory(InstallRunResult.Succeeded)
