@@ -214,9 +214,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                     appendLog("[*] diag: the app will be killed — this is expected")
                     delay(5000.toLong())
                     appendLog("[*] diag: === TRIGGERING SOFT REBOOT NOW ===")
-                    ProcessBuilder("su", "-c", "setprop ctl.restart zygote")
-                        .redirectErrorStream(true)
-                        .start()
+                    runHelper("-c", "setprop ctl.restart zygote")
                 }
 
                 finishHistory(InstallRunResult.Succeeded)
