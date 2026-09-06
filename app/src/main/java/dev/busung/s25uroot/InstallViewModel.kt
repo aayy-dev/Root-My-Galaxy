@@ -223,9 +223,17 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                     } catch (e: Throwable) {
                         appendLog("[-] diag: capture failed: ${e.message}")
                     }
-                    appendLog("[*] diag: triggering soft reboot in 5 seconds...")
+                    appendLog("[*] diag: killing orphaned p0ref processes...")
+                    try {
+                        val killResult = ShizukuController.capture(arrayOf("su", "-c",
+                            "pkill -9 cve43499-p0ref 2>&1; echo killed; sleep 2; echo done"))
+                        appendLog("[*] diag: p0ref cleanup: $killResult")
+                    } catch (e: Throwable) {
+                        appendLog("[-] diag: p0ref cleanup failed: ${e.message}")
+                    }
+                    appendLog("[*] diag: triggering soft reboot in 3 seconds...")
                     appendLog("[*] diag: the app will be killed — this is expected")
-                    delay(5000.toLong())
+                    delay(3000.toLong())
                     appendLog("[*] diag: === TRIGGERING SOFT REBOOT NOW ===")
                     try {
                         ShizukuController.exec(arrayOf("su", "-c",
