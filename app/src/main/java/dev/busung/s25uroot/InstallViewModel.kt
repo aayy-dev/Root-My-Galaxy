@@ -203,50 +203,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 setPhase(InstallPhase.Installed, app.getString(R.string.status_ksu_active))
                 appendLog(app.getString(R.string.log_install_complete))
 
-                if (DIAG_SOFT_REBOOT == "1" && shizukuEnabled()) {
-                    appendLog("[*] diag: capturing diagnostics via su...")
-                    try {
-                        val suTest = ShizukuController.capture(arrayOf("su", "-c", "id"))
-                        appendLog("[*] diag: su test: $suTest")
-                        ShizukuController.exec(arrayOf("su", "-c",
-                            "dmesg > /data/local/tmp/diag-dmesg-pre-reboot.txt"))
-                            .waitFor()
-                        ShizukuController.exec(arrayOf("su", "-c",
-                            "cat /proc/meminfo > /data/local/tmp/diag-meminfo.txt"))
-                            .waitFor()
-                        ShizukuController.exec(arrayOf("su", "-c",
-                            "ps -A > /data/local/tmp/diag-processes.txt"))
-                            .waitFor()
-                        val lsResult = ShizukuController.capture(arrayOf("su", "-c",
-                            "ls -la /data/local/tmp/diag-*"))
-                        appendLog("[+] diag: files: $lsResult")
-                    } catch (e: Throwable) {
-                        appendLog("[-] diag: capture failed: ${e.message}")
-                    }
-                    appendLog("[*] diag: killing orphaned p0ref processes...")
-                    try {
-                        val killResult = ShizukuController.capture(arrayOf("su", "-c",
-                            "pkill -9 cve43499-p0ref 2>&1; echo killed; sleep 2; echo done"))
-                        appendLog("[*] diag: p0ref cleanup: $killResult")
-                    } catch (e: Throwable) {
-                        appendLog("[-] diag: p0ref cleanup failed: ${e.message}")
-                    }
-                    appendLog("[*] diag: triggering soft reboot in 3 seconds...")
-                    appendLog("[*] diag: the app will be killed — this is expected")
-                    delay(3000.toLong())
-                    appendLog("[*] diag: === TRIGGERING SOFT REBOOT NOW ===")
-                    try {
-                        ShizukuController.exec(arrayOf("su", "-c",
-                            "setprop ctl.restart zygote"))
-                        delay(10000.toLong())
-                        appendLog("[-] diag: setprop didn't work, trying kill...")
-                        ShizukuController.exec(arrayOf("su", "-c",
-                            "kill -9 $(pidof zygote64) $(pidof zygote)"))
-                        delay(10000.toLong())
-                        appendLog("[-] diag: soft reboot did not trigger")
-                    } catch (_: Throwable) {}
-                }
-
                 finishHistory(InstallRunResult.Succeeded)
             } catch (error: Throwable) {
                 appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
@@ -290,7 +246,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 put("EXPLOIT_ATTEMPTS", EXPLOIT_ATTEMPTS)
                 put("P0_ATTEMPT_TIMEOUT_SEC", P0_ATTEMPT_TIMEOUT_SEC)
                 put("EXPLOIT_ATTEMPT_TIMEOUT_SEC", EXPLOIT_ATTEMPT_TIMEOUT_SEC)
-                put("DIAG_SOFT_REBOOT", DIAG_SOFT_REBOOT)
                 cachedP0Offset(bootToken)?.let { put(P0_OFFSET_ENV, it) }
             }
             processBuilder.start()
@@ -488,7 +443,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         add("EXPLOIT_ATTEMPTS=$EXPLOIT_ATTEMPTS")
         add("P0_ATTEMPT_TIMEOUT_SEC=$P0_ATTEMPT_TIMEOUT_SEC")
         add("EXPLOIT_ATTEMPT_TIMEOUT_SEC=$EXPLOIT_ATTEMPT_TIMEOUT_SEC")
-        add("DIAG_SOFT_REBOOT=$DIAG_SOFT_REBOOT")
         add("CVE43499_ROOT_HELPER=$helperPath")
         add("LD_PRELOAD=$payloadPath")
         cachedP0Offset(bootToken)?.let { add("$P0_OFFSET_ENV=$it") }
@@ -594,7 +548,6 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         private const val EXPLOIT_ATTEMPTS = "3"
         private const val P0_ATTEMPT_TIMEOUT_SEC = "600"
         private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "900"
-        private const val DIAG_SOFT_REBOOT = "1"
         private const val EXPLOIT_STALL_MILLIS = 90_000L
         private const val EXPLOIT_TOTAL_MILLIS = 960_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
