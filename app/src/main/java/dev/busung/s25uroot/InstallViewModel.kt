@@ -204,10 +204,36 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                 appendLog(app.getString(R.string.log_install_complete))
 
                 finishHistory(InstallRunResult.Succeeded)
+
+                if (shizukuEnabled()) {
+                    appendLog("[*] Triggering soft reboot via ksud...")
+                    delay(2000)
+                    try {
+                        ShizukuController.exec(
+                            arrayOf("su", "-c", "/data/adb/ksud soft-reboot")
+                        ).waitFor()
+                    } catch (_: Throwable) {
+                        try {
+                            ShizukuController.exec(
+                                arrayOf(SHIZUKU_KSUD_PATH, "soft-reboot")
+                            ).waitFor()
+                        } catch (_: Throwable) {}
+                    }
+                }
             } catch (error: Throwable) {
                 appendLog("[-] ${error.message ?: error.javaClass.simpleName}")
                 setPhase(InstallPhase.Failed, app.getString(R.string.status_install_failed))
                 finishHistory(InstallRunResult.Failed)
+
+                if (shizukuEnabled()) {
+                    appendLog("[*] Rebooting device in 3 seconds...")
+                    delay(3000)
+                    try {
+                        ShizukuController.exec(
+                            arrayOf("svc", "power", "reboot")
+                        ).waitFor()
+                    } catch (_: Throwable) {}
+                }
             } finally {
                 activeRunShizuku = null
             }
@@ -547,7 +573,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     companion object {
         private const val EXPLOIT_ATTEMPTS = "3"
         private const val P0_ATTEMPT_TIMEOUT_SEC = "600"
-        private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "900"
+        private const val EXPLOIT_ATTEMPT_TIMEOUT_SEC = "180"
         private const val EXPLOIT_STALL_MILLIS = 90_000L
         private const val EXPLOIT_TOTAL_MILLIS = 960_000L
         private const val HELPER_TIMEOUT_MILLIS = 120_000L
