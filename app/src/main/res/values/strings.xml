@@ -96,6 +96,7 @@
     <string name="status_not_installed">Not installed</string>
     <string name="status_support_failed">Support check failed</string>
     <string name="status_checking_github">Checking GitHub support manifest</string>
+    <string name="status_checking_payload">Checking payload support</string>
     <string name="status_downloading_payload">Downloading payloads</string>
     <string name="notification_channel_boot">Boot installation</string>
     <string name="status_exploit_running">Running kernel exploit</string>
@@ -130,6 +131,14 @@
     <string name="repo_commit_invalid">GitHub returned an invalid commit SHA</string>
     <string name="repo_url_invalid">The artifact repository is not allowed</string>
     <string name="repo_response_too_large">The response exceeded its size limit</string>
+    <string name="payload_cached">%1$s: using cached file</string>
+    <string name="payload_bundled">%1$s: using bundled payload</string>
+    <string name="payload_refresh_checking">Checking for payload updates…</string>
+    <string name="payload_refresh_done">Payload check complete</string>
+    <string name="settings_refresh_payloads">Refresh payloads</string>
+    <string name="settings_refresh_payloads_description">Check for updated payloads from GitHub</string>
+    <string name="payload_refresh_updated">Payloads updated</string>
+    <string name="payload_refresh_up_to_date">Payloads are up to date</string>
     <string name="open_github">Open GitHub</string>
     <string name="github_card_title">Explore Root My Galaxy</string>
     <string name="github_card_description">View the source code and usage instructions.</string>

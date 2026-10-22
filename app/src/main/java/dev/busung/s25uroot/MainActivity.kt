@@ -64,6 +64,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.DarkMode
@@ -318,6 +319,7 @@ private fun RootApp(
     val installState by installViewModel.state.collectAsStateWithLifecycle()
     val history by installViewModel.history.collectAsStateWithLifecycle()
     val targetCatalog by installViewModel.targetCatalog.collectAsStateWithLifecycle()
+    val payloadRefresh by installViewModel.payloadRefresh.collectAsStateWithLifecycle()
     var selectedPage by remember { mutableStateOf(AppPage.Overview) }
     var showInstallConfirmation by remember { mutableStateOf(false) }
     var showTargetPicker by remember { mutableStateOf(false) }
@@ -535,8 +537,11 @@ private fun RootApp(
                     shizukuMode = shizukuMode,
                     bootRootMode = bootRootMode,
                     updateStatus = updateStatus,
+                    payloadRefresh = payloadRefresh,
                     onCheckForUpdate = checkForUpdate,
                     onStartDownload = startDownload,
+                    onRefreshPayloads = installViewModel::refreshPayloads,
+                    onDismissPayloadRefresh = installViewModel::dismissPayloadRefresh,
                     onAccentColorChanged = onAccentColorChanged,
                     onThemeModeChanged = onThemeModeChanged,
                     onAdvancedModeChanged = onAdvancedModeChanged,
@@ -1442,8 +1447,11 @@ private fun SettingsPage(
     shizukuMode: Boolean,
     bootRootMode: Boolean,
     updateStatus: UpdateStatus,
+    payloadRefresh: PayloadRefreshState,
     onCheckForUpdate: () -> Unit,
     onStartDownload: (UpdateInfo) -> Unit,
+    onRefreshPayloads: () -> Unit,
+    onDismissPayloadRefresh: () -> Unit,
     onAccentColorChanged: (AccentColor) -> Unit,
     onThemeModeChanged: (AppThemeMode) -> Unit,
     onAdvancedModeChanged: (Boolean) -> Unit,
@@ -1611,16 +1619,28 @@ private fun SettingsPage(
         }
         item { SectionLabel(stringResource(R.string.advanced)) }
         item {
-            SettingsSwitchCard(
-                icon = Icons.Rounded.Memory,
-                title = stringResource(R.string.advanced_mode),
-                description = stringResource(R.string.advanced_mode_description),
-                checked = advancedMode,
-                onCheckedChange = {
-                    clickHaptic(view)
-                    onAdvancedModeChanged(it)
-                },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SettingsSwitchCard(
+                    icon = Icons.Rounded.Memory,
+                    title = stringResource(R.string.advanced_mode),
+                    description = stringResource(R.string.advanced_mode_description),
+                    checked = advancedMode,
+                    position = SettingsCardPosition.Top,
+                    onCheckedChange = {
+                        clickHaptic(view)
+                        onAdvancedModeChanged(it)
+                    },
+                )
+                RefreshPayloadsCard(
+                    state = payloadRefresh,
+                    position = SettingsCardPosition.Bottom,
+                    onRefresh = {
+                        clickHaptic(view)
+                        onRefreshPayloads()
+                    },
+                    onDismiss = onDismissPayloadRefresh,
+                )
+            }
         }
         item { SectionLabel(stringResource(R.string.about)) }
         item {
@@ -1641,6 +1661,80 @@ private fun SettingsPage(
                         clickHaptic(view)
                         showAboutDialog = true
                     },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RefreshPayloadsCard(
+    state: PayloadRefreshState,
+    position: SettingsCardPosition,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val view = LocalView.current
+    val refreshing = state is PayloadRefreshState.Refreshing
+
+    LaunchedEffect(state) {
+        if (state is PayloadRefreshState.Done || state is PayloadRefreshState.Error) {
+            delay(3000)
+            onDismiss()
+        }
+    }
+
+    Card(
+        onClick = {
+            clickHaptic(view)
+            if (!refreshing) onRefresh()
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = expressiveClickableCardShape(interactionSource, position),
+        interactionSource = interactionSource,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(28.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.settings_refresh_payloads),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    when (state) {
+                        is PayloadRefreshState.Idle ->
+                            stringResource(R.string.settings_refresh_payloads_description)
+                        is PayloadRefreshState.Refreshing ->
+                            state.message.ifBlank { stringResource(R.string.payload_refresh_checking) }
+                        is PayloadRefreshState.Done ->
+                            stringResource(
+                                if (state.updated) R.string.payload_refresh_updated
+                                else R.string.payload_refresh_up_to_date,
+                            )
+                        is PayloadRefreshState.Error -> state.message
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when (state) {
+                        is PayloadRefreshState.Error -> MaterialTheme.colorScheme.error
+                        is PayloadRefreshState.Done -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (refreshing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
                 )
             }
         }
