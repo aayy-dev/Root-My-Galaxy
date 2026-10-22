@@ -49,6 +49,13 @@ data class TargetCatalogUiState(
     val error: String? = null,
 )
 
+sealed interface PayloadRefreshState {
+    data object Idle : PayloadRefreshState
+    data class Refreshing(val message: String = "") : PayloadRefreshState
+    data class Done(val updated: Boolean) : PayloadRefreshState
+    data class Error(val message: String) : PayloadRefreshState
+}
+
 private data class CommandResult(val code: Int, val output: String)
 
 /**
@@ -91,6 +98,9 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
     val state: StateFlow<InstallUiState> = mutableState.asStateFlow()
     val history: StateFlow<List<InstallHistoryEntry>> = mutableHistory.asStateFlow()
     val targetCatalog: StateFlow<TargetCatalogUiState> = mutableTargetCatalog.asStateFlow()
+
+    private val mutablePayloadRefresh = MutableStateFlow<PayloadRefreshState>(PayloadRefreshState.Idle)
+    val payloadRefresh: StateFlow<PayloadRefreshState> = mutablePayloadRefresh.asStateFlow()
 
     init {
         refresh()
@@ -138,6 +148,30 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
         mutableHistory.value = mutableHistory.value.filterNot { it.id in toDelete }
     }
 
+    fun refreshPayloads() {
+        if (mutablePayloadRefresh.value is PayloadRefreshState.Refreshing) return
+        viewModelScope.launch(Dispatchers.IO) {
+            mutablePayloadRefresh.value = PayloadRefreshState.Refreshing()
+            try {
+                val updated = repository.refreshPayloads { message ->
+                    mutablePayloadRefresh.value = PayloadRefreshState.Refreshing(message)
+                }
+                mutablePayloadRefresh.value = PayloadRefreshState.Done(updated)
+            } catch (error: Throwable) {
+                mutablePayloadRefresh.value = PayloadRefreshState.Error(
+                    error.message ?: error.javaClass.simpleName,
+                )
+            }
+        }
+    }
+
+    fun dismissPayloadRefresh() {
+        val current = mutablePayloadRefresh.value
+        if (current is PayloadRefreshState.Done || current is PayloadRefreshState.Error) {
+            mutablePayloadRefresh.value = PayloadRefreshState.Idle
+        }
+    }
+
     fun loadTargetCatalog() {
         if (mutableTargetCatalog.value.loading) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -181,7 +215,7 @@ class InstallViewModel(application: Application) : AndroidViewModel(application)
                     }
                     appendLog(app.getString(R.string.log_shizuku_permission))
                 }
-                setPhase(InstallPhase.Checking, app.getString(R.string.status_checking_github))
+                setPhase(InstallPhase.Checking, app.getString(R.string.status_checking_payload))
                 val profile = if (profileId == null) {
                     repository.resolveTarget(DeviceSnapshot.current())
                 } else {

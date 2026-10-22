@@ -5,6 +5,7 @@ import android.system.Os
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
@@ -16,13 +17,17 @@ data class VerifiedPayloads(
 )
 
 class PayloadRepository(private val context: Context) {
+
+    /**
+     * Load the target manifest, preferring the local cache, then the bundled
+     * asset, and finally the remote repository. The cache is populated by
+     * [refreshPayloads].
+     */
     fun loadTargets(): List<TargetProfile> {
-        val commit = resolveMainCommit()
-        val manifestBytes = downloadBytes(rawUrl(commit, "support/targets-v3.json"), MAX_MANIFEST_BYTES)
-        return SupportManifest.parse(manifestBytes).targets.map { profile -> profile.copy(
-            exploit = profile.exploit.copy(url = pinArtifactUrl(profile.exploit.url, commit)),
-            kernelSu = profile.kernelSu.copy(url = pinArtifactUrl(profile.kernelSu.url, commit)),
-        ) }
+        val manifestBytes = loadCachedManifest()
+            ?: loadBundledManifest()
+            ?: loadRemoteManifest()
+        return SupportManifest.parse(manifestBytes).targets
     }
 
     fun resolveTarget(snapshot: DeviceSnapshot): TargetProfile = loadTargets()
@@ -33,17 +38,27 @@ class PayloadRepository(private val context: Context) {
         .firstOrNull { it.profileId == profileId }
         ?: error(context.getString(R.string.repo_profile_missing, profileId))
 
+    /**
+     * Resolve the payload files for a profile. Uses cached files on disk when
+     * they match the expected size, falls back to bundled assets, and downloads
+     * from the remote repository only as a last resort.
+     */
     fun download(profile: TargetProfile, onProgress: (String) -> Unit): VerifiedPayloads {
         val directory = File(context.filesDir, "payloads/${profile.profileId}").apply { mkdirs() }
-        val exploit = downloadArtifact(
+        val exploitFile = File(directory, "cve-2026-43499-app.so")
+        val ksudFile = File(directory, "ksud-s25u-kdp")
+
+        val exploit = resolveArtifact(
             profile.exploit,
-            File(directory, "cve-2026-43499-app.so"),
+            exploitFile,
+            "bundled/${profile.profileId}/cve-2026-43499-app.so",
             context.getString(R.string.artifact_exploit),
             onProgress,
         )
-        val kernelSu = downloadArtifact(
+        val kernelSu = resolveArtifact(
             profile.kernelSu,
-            File(directory, "ksud-s25u-kdp"),
+            ksudFile,
+            "bundled/${profile.profileId}/ksud-s25u-kdp",
             context.getString(R.string.artifact_kernelsu),
             onProgress,
         )
@@ -51,6 +66,131 @@ class PayloadRepository(private val context: Context) {
         Os.chmod(kernelSu.absolutePath, 0b100100100)
         return VerifiedPayloads(profile, exploit, kernelSu)
     }
+
+    /**
+     * Fetch the latest manifest and payload files from the remote repository,
+     * replacing the local cache. Returns true when new data was downloaded.
+     */
+    fun refreshPayloads(onProgress: (String) -> Unit): Boolean {
+        onProgress(context.getString(R.string.payload_refresh_checking))
+        val remoteManifest = loadRemoteManifest()
+        val cachedManifest = loadCachedManifest()
+
+        val changed = !cachedManifest.contentEquals(remoteManifest)
+        // Always write the manifest so the timestamp updates
+        cachedManifestFile().parentFile?.mkdirs()
+        cachedManifestFile().writeBytes(remoteManifest)
+
+        val targets = SupportManifest.parse(remoteManifest).targets
+        for (profile in targets) {
+            val directory = File(context.filesDir, "payloads/${profile.profileId}").apply { mkdirs() }
+            val exploitFile = File(directory, "cve-2026-43499-app.so")
+            val ksudFile = File(directory, "ksud-s25u-kdp")
+
+            if (!exploitFile.exists() || exploitFile.length() != profile.exploit.size) {
+                downloadArtifact(
+                    profile.exploit,
+                    exploitFile,
+                    context.getString(R.string.artifact_exploit),
+                    onProgress,
+                )
+            }
+            if (!ksudFile.exists() || ksudFile.length() != profile.kernelSu.size) {
+                downloadArtifact(
+                    profile.kernelSu,
+                    ksudFile,
+                    context.getString(R.string.artifact_kernelsu),
+                    onProgress,
+                )
+            }
+        }
+        onProgress(context.getString(R.string.payload_refresh_done))
+        return changed
+    }
+
+    // ------------------------------------------------------------------
+    // Manifest resolution: cached → bundled → remote
+    // ------------------------------------------------------------------
+
+    private fun cachedManifestFile() = File(context.filesDir, "payloads/targets-v3.json")
+
+    private fun loadCachedManifest(): ByteArray? {
+        val file = cachedManifestFile()
+        return if (file.exists()) file.readBytes() else null
+    }
+
+    private fun loadBundledManifest(): ByteArray? = runCatching {
+        context.assets.open("bundled/targets-v3.json").use { it.readBytes() }
+    }.getOrNull()
+
+    private fun loadRemoteManifest(): ByteArray {
+        val commit = resolveMainCommit()
+        return downloadBytes(rawUrl(commit, "support/targets-v3.json"), MAX_MANIFEST_BYTES)
+    }
+
+    // ------------------------------------------------------------------
+    // Artifact resolution: cached → bundled → remote
+    // ------------------------------------------------------------------
+
+    /**
+     * Returns a usable file for the given artifact, checking cached (on disk),
+     * then bundled (in assets), then remote (download). When using a bundled
+     * asset, it is copied to the cache directory so subsequent calls skip the
+     * asset extraction.
+     */
+    private fun resolveArtifact(
+        artifact: RemoteArtifact,
+        destination: File,
+        assetPath: String,
+        label: String,
+        onProgress: (String) -> Unit,
+    ): File {
+        // 1. Cached on disk with correct size
+        if (destination.exists() && destination.length() == artifact.size) {
+            onProgress(context.getString(R.string.payload_cached, label))
+            return destination
+        }
+
+        // 2. Bundled in assets
+        val bundled = extractBundledArtifact(assetPath, destination, artifact.size)
+        if (bundled != null) {
+            onProgress(context.getString(R.string.payload_bundled, label))
+            return bundled
+        }
+
+        // 3. Download from remote
+        return downloadArtifact(artifact, destination, label, onProgress)
+    }
+
+    /**
+     * Tries to copy a bundled asset to [destination]. Returns the file on
+     * success, or null if the asset does not exist or does not match the
+     * expected size.
+     */
+    private fun extractBundledArtifact(assetPath: String, destination: File, expectedSize: Long): File? {
+        return try {
+            destination.parentFile?.mkdirs()
+            val temporary = File(destination.parentFile, "${destination.name}.asset")
+            context.assets.open(assetPath).use { input ->
+                FileOutputStream(temporary).use { output ->
+                    input.copyTo(output)
+                    output.fd.sync()
+                }
+            }
+            if (temporary.length() != expectedSize) {
+                temporary.delete()
+                return null
+            }
+            if (destination.exists()) destination.delete()
+            if (temporary.renameTo(destination)) destination else null
+        } catch (_: IOException) {
+            null
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Remote download (unchanged logic)
+    // ------------------------------------------------------------------
 
     private fun downloadArtifact(
         artifact: RemoteArtifact,
@@ -101,11 +241,6 @@ class PayloadRepository(private val context: Context) {
 
     private fun rawUrl(commit: String, path: String) = "$RAW_REPOSITORY/$commit/$path"
 
-    private fun pinArtifactUrl(url: String, commit: String): String {
-        require(url.startsWith(MUTABLE_RAW_PREFIX)) { context.getString(R.string.repo_url_invalid) }
-        return "$RAW_REPOSITORY/$commit/${url.removePrefix(MUTABLE_RAW_PREFIX)}"
-    }
-
     private fun downloadBytes(url: String, maximum: Int): ByteArray {
         val connection = open(url)
         val bytes = connection.inputStream.use { input ->
@@ -140,7 +275,6 @@ class PayloadRepository(private val context: Context) {
             "https://api.github.com/repos/aayy-dev/Root-My-Galaxy-Payloads/git/ref/heads/testing"
         private const val RAW_REPOSITORY =
             "https://raw.githubusercontent.com/aayy-dev/Root-My-Galaxy-Payloads"
-        private const val MUTABLE_RAW_PREFIX = "$RAW_REPOSITORY/testing/"
         private const val MAX_COMMIT_RESPONSE_BYTES = 16 * 1024
         private const val MAX_MANIFEST_BYTES = 256 * 1024
     }
